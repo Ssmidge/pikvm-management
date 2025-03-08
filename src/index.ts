@@ -15,6 +15,9 @@ const app = new Hono<{Bindings: Bindings }>();
     - Show the power status of each machine (if it's setup) - DONE
     - Get the basic system information - DONE
     - Allow mass actions of all of the mentioned above - DONE
+    - Preferably, add a form of IP-based authentication, or ownership
+    - Move everything to modules so we don't have a 200 line index.ts
+    - Be able to upload the image to the PiKVM
 */
 app.get('/', async (c) => {
     return c.json({ success: true, results: { message: 'Hello, World!', documentation: 'https://github.com/Ssmidge/pikvm-management/blob/main/README.md' } });
@@ -89,7 +92,6 @@ app.get('/power/:name', async (c) => {
     const { baseUrl, username, password } = kvm;
     
     const info = await (await fetch(`https://${baseUrl}/api/atx`, { headers: { 'X-KVMD-User': username, 'X-KVMD-Passwd': password }, method: 'GET' })).json() as any;
-    console.log(info);
 
     return c.json({ success: true, results: {
         power: info.result,
@@ -114,7 +116,78 @@ app.post('/power/:name', async (c) => {
     const { baseUrl, username, password } = kvm;
     
     const info = await (await fetch(`https://${baseUrl}/api/atx/click?button=${mappedAction[action]}`, { headers: { 'X-KVMD-User': username, 'X-KVMD-Passwd': password }, method: 'POST', body: undefined })).json() as any;
-    console.log(info);
+
+    return c.json({ success: info.ok });
+});
+
+// Mass Storage Device stuff
+// this is going to be annoying as fuck but whatever anything is better than having to auth every single time
+app.get('/storage/:name', async (c) => {
+    const name = c.req.param('name');
+    if (!name) return c.json({ success: false, error: 'Missing required fields' });
+
+    const kvm = (await c.env.database.prepare('SELECT * FROM kvms WHERE name = ?').bind(name).run()).results[0] as unknown as KVMConfig;
+    if (!kvm) return c.json({ success: false, error: 'KVM not found' });
+
+    const { baseUrl, username, password } = kvm;
+
+    const info = await (await fetch(`https://${baseUrl}/api/msd`, { headers: { 'X-KVMD-User': username, 'X-KVMD-Passwd': password }, method: 'GET' })).json() as any;
+
+    return c.json({
+        success: info.ok,
+        drive: {
+            type: info.result.drive.cdrom ? "cdrom" : "flash",
+            connected: info.result.drive.connected,
+            image: info.result.drive.image,
+            isReadWrite: info.result.drive.rw,
+        },
+    })
+});
+
+app.post('/storage/:name/setting', async (c) => {
+    const name = c.req.param('name');
+    if (!name) return c.json({ success: false, error: 'Missing required fields' });
+
+    const kvm = (await c.env.database.prepare('SELECT * FROM kvms WHERE name = ?').bind(name).run()).results[0] as unknown as KVMConfig;
+    if (!kvm) return c.json({ success: false, error: 'KVM not found' });
+
+    const { baseUrl, username, password } = kvm;
+
+    let { cdrom, rw } = await c.req.json() as { cdrom: boolean, rw: boolean };
+    if (cdrom === undefined && rw === undefined) return c.json({ success: false, error: 'Missing required fields' });
+
+    // if the drive is already a cdrom, then it's already read-only on the PiKVM side
+    if (cdrom) rw = false;
+
+    const info = await (await fetch(`https://${baseUrl}/api/msd`, { headers: { 'X-KVMD-User': username, 'X-KVMD-Passwd': password, 'Content-Type': 'application/json' }, method: 'POST', body: JSON.stringify({ cdrom, rw }) })).json() as any;
+
+    return c.json({ success: info.ok });
+});
+
+app.post('/storage/:name/connect', async (c) => {
+    const name = c.req.param('name');
+    if (!name) return c.json({ success: false, error: 'Missing required fields' });
+
+    const kvm = (await c.env.database.prepare('SELECT * FROM kvms WHERE name = ?').bind(name).run()).results[0] as unknown as KVMConfig;
+    if (!kvm) return c.json({ success: false, error: 'KVM not found' });
+
+    const { baseUrl, username, password } = kvm;
+
+    const info = await (await fetch(`https://${baseUrl}/api/msd/set_connected?connected=1`, { headers: { 'X-KVMD-User': username, 'X-KVMD-Passwd': password, 'Content-Type': 'application/json' }, method: 'POST', body: undefined })).json() as any;
+
+    return c.json({ success: info.ok });
+});
+
+app.post('/storage/:name/disconnect', async (c) => {
+    const name = c.req.param('name');
+    if (!name) return c.json({ success: false, error: 'Missing required fields' });
+
+    const kvm = (await c.env.database.prepare('SELECT * FROM kvms WHERE name = ?').bind(name).run()).results[0] as unknown as KVMConfig;
+    if (!kvm) return c.json({ success: false, error: 'KVM not found' });
+
+    const { baseUrl, username, password } = kvm;
+
+    const info = await (await fetch(`https://${baseUrl}/api/msd/set_connected?connected=0`, { headers: { 'X-KVMD-User': username, 'X-KVMD-Passwd': password, 'Content-Type': 'application/json' }, method: 'POST', body: undefined })).json() as any;
 
     return c.json({ success: info.ok });
 });
@@ -136,7 +209,4 @@ app.post('/power', async (c) => {
     }
     return c.json({ success: true, results });
 });
-
-
-
 export default app;

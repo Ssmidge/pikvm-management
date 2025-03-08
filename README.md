@@ -21,6 +21,40 @@ bun run deploy
 
 ## API Endpoints
 
+### Get Documentation
+```
+GET /
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "results": {
+    "message": "Hello, World!",
+    "documentation": "https://github.com/Ssmidge/pikvm-management/blob/main/README.md"
+  }
+}
+```
+
+### Get API Version Info
+**Request:**
+```
+GET /info
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "results": {
+    "version": "1.0.0",
+    "author": "Ssmidge",
+    "copyright": "This software is provided as-is with no guarantee :D"
+  }
+}
+```
+
 ### List Managed PiKVMs
 **GET** `/list`
 Retrieves a list of all registered PiKVMs (with API keys censored).
@@ -104,6 +138,8 @@ Sends a power action to the PiKVM.
 }
 ```
 
+
+
 **Available Actions:**
 - `short_press` (Power on/off toggle)
 - `long_press` (Force shutdown)
@@ -116,3 +152,91 @@ Sends a power action to the PiKVM.
 }
 ```
 
+### Get Storage Info
+**Request:**
+```
+GET /storage/{name}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "drive": {
+    "type": "flash",
+    "connected": true,
+    "image": "ubuntu.iso",
+    "isReadWrite": true
+  }
+}
+```
+
+### Update Storage Settings
+**Request:**
+```
+POST /storage/{name}/setting
+```
+**Body:**
+```json
+{
+  "cdrom": false,
+  "rw": true
+}
+```
+
+**Response:**
+```json
+{
+  "success": true
+}
+```
+
+### Connect Storage
+**Request:**
+```
+POST /storage/{name}/connect
+```
+
+**Response:**
+```json
+{
+  "success": true
+}
+```
+
+### Disconnect Storage
+**Request:**
+```
+POST /storage/{name}/disconnect
+```
+
+**Response:**
+```json
+{
+  "success": true
+}
+```
+
+### Bulk Power Actions
+**Request:**
+```
+POST /power
+```
+**Body:**
+```json
+{
+  "names": ["Rack-1", "Rack-2"],
+  "action": "reset"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "results": [
+    { "name": "Rack-1", "success": true },
+    { "name": "Rack-2", "success": true }
+  ]
+}
+```
