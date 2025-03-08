@@ -11,11 +11,19 @@ const app = new Hono<{Bindings: Bindings }>();
 
 /*
   Development plan:
-    - list the managed PiKVMs - Data stored in a Cloudflare D1 store
-    - Show the power status of each machine (if it's setup)
-    - Get the basic system information
-    - Allow mass actions of all of the mentioned above
+    - list the managed PiKVMs - Data stored in a Cloudflare D1 store - DONE
+    - Show the power status of each machine (if it's setup) - DONE
+    - Get the basic system information - DONE
+    - Allow mass actions of all of the mentioned above - DONE
 */
+app.get('/', async (c) => {
+    return c.json({ success: true, results: { message: 'Hello, World!', documentation: 'https://github.com/Ssmidge/pikvm-management/blob/main/README.md' } });
+});
+
+app.get('/info', async (c) => {
+    return c.json({ success: true, results: { version: '1.0.0', author: 'Ssmidge', copyright: "This software is provided as-is with no guarantee :D" } });
+});
+
 app.get('/list', async (c) => {
     const sqlQuery = await c.env.database.prepare('SELECT * FROM kvms').all();
     const list: KVMConfig[] = sqlQuery.results as KVMConfig[];
@@ -110,5 +118,25 @@ app.post('/power/:name', async (c) => {
 
     return c.json({ success: info.ok });
 });
+
+// Bulk actions for power
+app.post('/power', async (c) => {
+    const { names, action } = await c.req.json() as { names: string[], action: 'short_press' | 'long_press' | 'reset' };
+    if (!names || !action || !['short_press', 'long_press', 'reset'].includes(action)) { return c.json({ success: false, error: 'Missing required fields' }); }
+    const mappedAction = { short_press: 'power', long_press: 'power_long', reset: 'reset' };
+    const results = [];
+    for (const name of names) {
+        const kvm = (await c.env.database.prepare('SELECT * FROM kvms WHERE name = ?').bind(name).run()).results[0] as unknown as KVMConfig;
+        if (!kvm) return c.json({ success: false, error: 'KVM not found' });
+    
+        const { baseUrl, username, password } = kvm;
+        
+        const info = await (await fetch(`https://${baseUrl}/api/atx/click?button=${mappedAction[action]}`, { headers: { 'X-KVMD-User': username, 'X-KVMD-Passwd': password }, method: 'POST', body: undefined })).json() as any;
+        results.push({ name, success: info.ok });
+    }
+    return c.json({ success: true, results });
+});
+
+
 
 export default app;
